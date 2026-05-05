@@ -905,6 +905,7 @@ with tab6:
         daily = artist_data.groupby("date")["minutes_played"].sum()
 
         if not daily.empty:
+            import datetime
             peak_date = daily.idxmax()
             peak_vol = daily.max()
             drop_off = peak_vol * 0.20
@@ -912,17 +913,27 @@ with tab6:
             post_peak = daily[daily.index > peak_date]
             burnout = post_peak[post_peak <= drop_off]
 
+            # Convert index to datetime for plotly compatibility
+            dates = pd.to_datetime(daily.index)
             fig_burn = px.area(
-                x=daily.index, y=daily.values,
+                x=dates, y=daily.values,
                 labels={"x": "Date", "y": "Minutes"},
                 color_discrete_sequence=[P["success"]]
             )
-            fig_burn.add_vline(x=str(peak_date), line_dash="dash", line_color=P["danger"],
-                              annotation_text="Peak", annotation_position="top left")
+            # Use add_shape instead of add_vline with annotation to avoid plotly bug
+            peak_dt = pd.Timestamp(peak_date)
+            fig_burn.add_shape(type="line", x0=peak_dt, x1=peak_dt, y0=0, y1=1,
+                               yref="paper", line=dict(color=P["danger"], dash="dash", width=2))
+            fig_burn.add_annotation(x=peak_dt, y=peak_vol, text="Peak",
+                                    showarrow=True, arrowhead=2, font=dict(color=P["danger"]))
+
             if not burnout.empty:
                 burnout_date = burnout.index[0]
-                fig_burn.add_vline(x=str(burnout_date), line_dash="dot", line_color=P["text"],
-                                   annotation_text="Burnout", annotation_position="top right")
+                burnout_dt = pd.Timestamp(burnout_date)
+                fig_burn.add_shape(type="line", x0=burnout_dt, x1=burnout_dt, y0=0, y1=1,
+                                   yref="paper", line=dict(color=P["text"], dash="dot", width=2))
+                fig_burn.add_annotation(x=burnout_dt, y=drop_off, text="Burnout",
+                                        showarrow=True, arrowhead=2, font=dict(color=P["text"]))
                 days_to_burnout = (burnout_date - peak_date).days
                 st.info(f"Obsession lasted **{days_to_burnout} days** from peak to burnout.")
 
