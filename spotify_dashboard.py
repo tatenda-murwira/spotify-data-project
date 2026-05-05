@@ -205,7 +205,12 @@ def load_data() -> pd.DataFrame:
     if csv_path.exists():
         df = pd.read_csv(csv_path)
     elif "data_url" in st.secrets:
-        df = pd.read_csv(st.secrets["data_url"])
+        url = st.secrets["data_url"]
+        # Handle Google Drive links that return HTML instead of raw CSV
+        if "drive.google.com" in url:
+            file_id = url.split("/d/")[1].split("/")[0] if "/d/" in url else url.split("id=")[1].split("&")[0]
+            url = f"https://drive.google.com/uc?export=download&confirm=1&id={file_id}"
+        df = pd.read_csv(url)
     else:
         files = glob.glob(str(root / "Streaming_History_*.json"))
         if not files:
