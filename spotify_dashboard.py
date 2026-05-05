@@ -328,7 +328,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Trends", "Top Artists & Tracks", "Search", "2026 Wrapped"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Overview", "Trends", "Top Artists & Tracks", "Search", "2026 Wrapped", "Deep Analysis"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -801,6 +801,135 @@ with tab5:
                 <div style='font-size: 0.85rem; color: {P["muted"]}; margin-top: 4px;'>Your peak month</div>
             </div>
             """, unsafe_allow_html=True)
+# ═══════════════════════════════════════════════════════════════════════════
+# TAB 6: DEEP ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════════
+with tab6:
+    # ── Deep Work Sessions ────────────────────────────────────────────────
+    section_title("Deep Work Sessions", "work")
+    st.caption("Sessions >2 hours with gaps ≤15 min — a proxy for focused study/work.")
+
+    sorted_df = filt.sort_values("played_at").copy()
+    sorted_df["gap"] = sorted_df["played_at"].diff().dt.total_seconds() / 60
+    sorted_df["new_session"] = sorted_df["gap"] > 15
+    sorted_df["session_id"] = sorted_df["new_session"].cumsum()
+
+    session_stats = sorted_df.groupby("session_id").agg(
+        total_mins=("minutes_played", "sum"),
+        start_time=("played_at", "min")
+    )
+    deep_work = session_stats[session_stats["total_mins"] >= 120].copy()
+    deep_work["hour"] = deep_work["start_time"].dt.hour
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.metric("Deep Work Sessions Found", len(deep_work))
+    with col2:
+        if not deep_work.empty:
+            dw_hour = deep_work.groupby("hour").size().reset_index(name="count")
+            fig_dw = px.bar(dw_hour, x="hour", y="count", color_discrete_sequence=[P["success"]])
+            fig_dw.update_layout(**CHART_LAYOUT, xaxis_title="Hour of Day", yaxis_title="Sessions", height=300)
+            st.plotly_chart(fig_dw, use_container_width=True)
+        else:
+            st.info("No deep work sessions detected in the selected range.")
+
+    st.markdown("---")
+
+    # ── Exam/Study Spikes ─────────────────────────────────────────────────
+    section_title("Monthly Listening Volume (Exam/Study Spikes)", "school")
+    st.caption("High-volume months may correlate with exam seasons or study sprints.")
+
+    monthly_vol = filt.groupby("month")["minutes_played"].sum().reset_index()
+    fig_exam = px.line(monthly_vol, x="month", y="minutes_played", markers=True, color_discrete_sequence=[P["primary"]])
+    fig_exam.update_layout(**CHART_LAYOUT, xaxis_title=None, yaxis_title="Total Minutes", height=350)
+    st.plotly_chart(fig_exam, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Anchor Artists & Discovery Rate ───────────────────────────────────
+    section_title("Anchor Artists & Discovery Rate", "explore")
+    st.caption("Anchor Artists appear in your Top 20 in both the first and last year of the dataset.")
+
+    years_available = sorted(filt["year"].unique())
+    if len(years_available) >= 2:
+        first_year, last_year = years_available[0], years_available[-1]
+
+        def get_top_20(year):
+            return set(
+                filt[filt["year"] == year]
+                .groupby("artist_name")["minutes_played"].sum()
+                .nlargest(20).index
+            )
+
+        anchors = get_top_20(first_year).intersection(get_top_20(last_year))
+        discovery = filt.groupby("year")["artist_name"].nunique().reset_index(name="unique_artists")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Anchor Artists** (Top 20 in both {first_year} & {last_year}):")
+            if anchors:
+                for a in sorted(anchors):
+                    st.markdown(f"- {a}")
+            else:
+                st.info("No anchor artists found.")
+        with col2:
+            fig_disc = px.bar(discovery, x="year", y="unique_artists", color_discrete_sequence=[P["secondary"]])
+            fig_disc.update_layout(**CHART_LAYOUT, xaxis_title="Year", yaxis_title="Unique Artists", height=300)
+            st.plotly_chart(fig_disc, use_container_width=True)
+    else:
+        st.info("Need at least 2 years of data for this analysis.")
+
+    st.markdown("---")
+
+    # ── Discovery Seasons ─────────────────────────────────────────────────
+    section_title("Discovery Seasons", "travel_explore")
+    st.caption("High unique artist counts = exploration phase; low = comfort-zone listening.")
+
+    disc_season = filt.groupby("month")["artist_name"].nunique().reset_index(name="unique_artists")
+    fig_ds = px.area(disc_season, x="month", y="unique_artists", markers=True, color_discrete_sequence=[P["primary"]])
+    fig_ds.update_traces(fillcolor="rgba(139, 92, 246, 0.15)")
+    fig_ds.update_layout(**CHART_LAYOUT, xaxis_title=None, yaxis_title="Unique Artists", height=350)
+    st.plotly_chart(fig_ds, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Artist Burnout Curve ──────────────────────────────────────────────
+    section_title("Artist Burnout Curve", "local_fire_department")
+    st.caption("Track daily listening for an artist — peak obsession date and burnout point (80% drop).")
+
+    top10 = filt.groupby("artist_name")["minutes_played"].sum().nlargest(10).index.tolist()
+    selected_artist = st.selectbox("Choose an artist", top10)
+
+    if selected_artist:
+        artist_data = filt[filt["artist_name"] == selected_artist].copy()
+        daily = artist_data.groupby("date")["minutes_played"].sum()
+
+        if not daily.empty:
+            peak_date = daily.idxmax()
+            peak_vol = daily.max()
+            drop_off = peak_vol * 0.20
+
+            post_peak = daily[daily.index > peak_date]
+            burnout = post_peak[post_peak <= drop_off]
+
+            fig_burn = px.area(
+                x=daily.index, y=daily.values,
+                labels={"x": "Date", "y": "Minutes"},
+                color_discrete_sequence=[P["success"]]
+            )
+            fig_burn.add_vline(x=str(peak_date), line_dash="dash", line_color=P["danger"],
+                              annotation_text="Peak", annotation_position="top left")
+            if not burnout.empty:
+                burnout_date = burnout.index[0]
+                fig_burn.add_vline(x=str(burnout_date), line_dash="dot", line_color=P["text"],
+                                   annotation_text="Burnout", annotation_position="top right")
+                days_to_burnout = (burnout_date - peak_date).days
+                st.info(f"Obsession lasted **{days_to_burnout} days** from peak to burnout.")
+
+            fig_burn.update_layout(**CHART_LAYOUT, height=400)
+            st.plotly_chart(fig_burn, use_container_width=True)
+
+
 st.markdown("---")
 st.markdown(f"""
 <div style='text-align: center; color: {P["muted"]}; font-size: 0.85rem; padding: 20px 0;'>
