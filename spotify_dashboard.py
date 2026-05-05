@@ -18,6 +18,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+import pandas as pd
+
+@st.cache_data
+def load_data():
+    url = st.secrets["data_url"]  # Google Drive direct download link
+    return pd.read_csv(url)
 
 # ── Color Palette ────────────────────────────────────────────────────────────
 P = {
