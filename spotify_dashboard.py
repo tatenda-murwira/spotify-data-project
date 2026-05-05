@@ -893,6 +893,43 @@ with tab6:
 
     st.markdown("---")
 
+    # ── Homegrown vs. International ─────────────────────────────────────────
+    section_title("Homegrown vs. International", "public")
+    st.caption("Artists classified as local (Zimbabwean) or international — percentage split per year.")
+
+    zim_artists = [
+        'Winky D', 'Jah Prayzah', 'Holy Ten', 'Sha Sha', 'Nutty O', 'Enzo Ishall',
+        'Saintfloew', 'Voltz JT', 'Takura', 'Kae Chaps', 'Ti Gonzi', 'Kikky Badass',
+        'Janet Manyowa', 'Michael Mahendere', 'Mathias Mhere', 'Dorcas Moyo',
+        'Baba Harare', 'Tamy Moyo', 'Poptain', 'Qounfuzed', 'Gemma Griffiths',
+        'Master H', 'Oliver Mtukudzi', 'Leonard Dembo', 'Thomas Mapfumo',
+        'Chiwoniso Maraire', 'Bhundu Boys', 'Nitefreak', 'Nyasha David',
+        'Garry Mapanzure', 'Killer T', 'Ammara Brown', 'ExQ', 'Freeman HKD',
+        'Ishan', 'Anita Jaxson', 'Mudiwa Hood', 'Feli Nandi', 'Hope Masike',
+        'Minister Michael Mahendere', 'Minister GUC', 'DJ Ngwazi', 'Justin Woodlake'
+    ]
+
+    zim_set = {a.lower() for a in zim_artists}
+    filt_origin = filt.copy()
+    filt_origin["origin"] = filt_origin["artist_name"].apply(
+        lambda x: "Homegrown" if any(z in str(x).lower() for z in zim_set) else "International"
+    )
+
+    yearly_origin = filt_origin.groupby(["year", "origin"])["minutes_played"].sum().unstack().fillna(0)
+    yearly_origin_pct = yearly_origin.div(yearly_origin.sum(axis=1), axis=0) * 100
+    yearly_origin_pct = yearly_origin_pct.reset_index().melt(id_vars="year", var_name="origin", value_name="pct")
+
+    fig_origin = px.bar(
+        yearly_origin_pct, x="year", y="pct", color="origin",
+        barmode="stack",
+        color_discrete_map={"Homegrown": P["success"], "International": P["primary"]},
+        labels={"pct": "Percentage (%)", "year": "Year"}
+    )
+    fig_origin.update_layout(**CHART_LAYOUT, height=400, legend_title_text="Origin")
+    st.plotly_chart(fig_origin, use_container_width=True)
+
+    st.markdown("---")
+
     # ── Artist Burnout Curve ──────────────────────────────────────────────
     section_title("Artist Burnout Curve", "local_fire_department")
     st.caption("Track daily listening for an artist — peak obsession date and burnout point (80% drop).")
