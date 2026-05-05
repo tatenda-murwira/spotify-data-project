@@ -18,12 +18,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-import pandas as pd
-
-@st.cache_data
-def load_data():
-    url = st.secrets["data_url"]  # Google Drive direct download link
-    return pd.read_csv(url)
 
 # ── Color Palette ────────────────────────────────────────────────────────────
 P = {
@@ -210,11 +204,12 @@ def load_data() -> pd.DataFrame:
     
     if csv_path.exists():
         df = pd.read_csv(csv_path)
-        df["played_at"] = pd.to_datetime(df["played_at"], errors="coerce", utc=True).dt.tz_convert("Africa/Harare")
+    elif "data_url" in st.secrets:
+        df = pd.read_csv(st.secrets["data_url"])
     else:
         files = glob.glob(str(root / "Streaming_History_*.json"))
         if not files:
-            raise FileNotFoundError("No Spotify history files found.")
+            raise FileNotFoundError("No Spotify history files found. Set 'data_url' in Streamlit secrets or include the CSV.")
         
         raw = pd.concat([pd.read_json(f) for f in files], ignore_index=True)
         raw["played_at"] = pd.to_datetime(raw["ts"], errors="coerce", utc=True).dt.tz_convert("Africa/Harare")
@@ -225,6 +220,7 @@ def load_data() -> pd.DataFrame:
         })
         df = raw[["played_at", "artist_name", "track_name", "minutes_played", "ms_played"]].copy()
 
+    df["played_at"] = pd.to_datetime(df["played_at"], errors="coerce", utc=True).dt.tz_convert("Africa/Harare")
     df = df.dropna(subset=["played_at", "artist_name", "track_name"]).copy()
     df["minutes_played"] = pd.to_numeric(df["minutes_played"], errors="coerce")
     df["ms_played"] = pd.to_numeric(df["ms_played"], errors="coerce")
